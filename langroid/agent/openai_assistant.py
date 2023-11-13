@@ -4,10 +4,11 @@ import asyncio
 import logging
 import time
 from enum import Enum
-from typing import Any, Dict, List, Optional, Type, cast, no_type_check
+from typing import Any, Dict, List, Optional, Tuple, Type, cast, no_type_check
 
 from openai.types.beta import Assistant, Thread
 from openai.types.beta.threads import Run, ThreadMessage
+from openai.types.beta.threads.runs import RunStep
 from pydantic import BaseModel
 from rich import print
 
@@ -15,7 +16,11 @@ from langroid.agent.chat_agent import ChatAgent, ChatAgentConfig
 from langroid.agent.chat_document import ChatDocument
 from langroid.agent.tool_message import ToolMessage
 from langroid.language_models.base import LLMFunctionCall, LLMMessage, LLMResponse, Role
-from langroid.language_models.openai_gpt import OpenAIGPT, OpenAIGPTConfig
+from langroid.language_models.openai_gpt import (
+    OpenAIChatModel,
+    OpenAIGPT,
+    OpenAIGPTConfig,
+)
 from langroid.utils.configuration import settings
 from langroid.utils.system import generate_user_id, update_hash
 
@@ -57,14 +62,14 @@ class RunStatus(str, Enum):
 
 
 class OpenAIAssistantConfig(ChatAgentConfig):
-    use_cached_assistant: bool = True  # set in script via user dialog
+    use_cached_assistant: bool = False  # set in script via user dialog
     assistant_id: str | None = None
-    use_cached_thread: bool = True  # set in script via user dialog
+    use_cached_thread: bool = False  # set in script via user dialog
     thread_id: str | None = None
     # set to True once we can add Assistant msgs in threads
     cache_responses: bool = False
     timeout: int = 30  # can be different from llm.timeout
-    llm = OpenAIGPTConfig()
+    llm = OpenAIGPTConfig(chat_model=OpenAIChatModel.GPT4_TURBO)
     tools: List[AssitantTool] = []
     files: List[str] = []
 
@@ -92,6 +97,8 @@ class OpenAIAssistant(ChatAgent):
         self.threads = self.llm.client.beta.threads
         self.thread_messages = self.llm.client.beta.threads.messages
         self.assistants = self.llm.client.beta.assistants
+        # which tool_ids are awaiting output submissions
+        self.pending_tool_ids: List[str] = []
 
         self.thread: Thread | None = None
         self.assistant: Assistant | None = None
@@ -115,7 +122,7 @@ class OpenAIAssistant(ChatAgent):
             for f in files
         ]
         self.config.files = list(set(self.config.files + files))
-        self.assistants.update(
+        self.assistant = self.assistants.update(
             self.assistant.id,
             file_ids=[f.id for f in self.files],
         )
@@ -128,7 +135,7 @@ class OpenAIAssistant(ChatAgent):
         for t in tools:
             if t.dct() not in all_tool_dicts:
                 self.config.tools.append(t)
-        self.assistants.update(
+        self.assistant = self.assistants.update(
             self.assistant.id,
             tools=[tool.dct() for tool in self.config.tools],  # type: ignore
         )
@@ -155,11 +162,15 @@ class OpenAIAssistant(ChatAgent):
             # then there's no need to attach the fn to the assistant
             # (HANDLING the fn will still work via self.agent_response)
             return
+        if self.config.use_tools:
+            sys_msg = self._create_system_and_tools_message()
+            self.set_system_message(sys_msg.content)
+        if not self.config.use_functions_api:
+            return
         functions, _ = self._function_args()
         if functions is None:
             return
-        # add the functions to the assistant
-        # 1. retrieve assistant
+        # add the functions to the assistant:
         if self.assistant is None:
             raise ValueError("Assistant is None")
         tools = self.assistant.tools
@@ -172,7 +183,7 @@ class OpenAIAssistant(ChatAgent):
                 for f in functions
             ]
         )
-        self.assistants.update(
+        self.assistant = self.assistants.update(
             self.assistant.id,
             tools=tools,  # type: ignore
         )
@@ -293,7 +304,14 @@ class OpenAIAssistant(ChatAgent):
                     but config.use_cached_thread = False, so deleting it.
                     """
                 )
-                self.llm.client.beta.threads.delete(thread_id=cached)
+                try:
+                    self.llm.client.beta.threads.delete(thread_id=cached)
+                except Exception:
+                    logger.warning(
+                        f"""
+                        Could not delete thread with id {cached}, ignoring. 
+                        """
+                    )
                 self.llm.cache.delete_keys([self._cache_thread_key()])
         if self.thread is None:
             if self.assistant is None:
@@ -340,7 +358,14 @@ class OpenAIAssistant(ChatAgent):
                     but config.use_cached_assistant = False, so deleting it.
                     """
                 )
-                self.llm.client.beta.assistants.delete(assistant_id=cached)
+                try:
+                    self.llm.client.beta.assistants.delete(assistant_id=cached)
+                except Exception:
+                    logger.warning(
+                        f"""
+                        Could not delete assistant with id {cached}, ignoring. 
+                        """
+                    )
                 self.llm.cache.delete_keys([self._cache_assistant_key()])
         if self.assistant is None:
             self.assistant = self.llm.client.beta.assistants.create(
@@ -357,6 +382,53 @@ class OpenAIAssistant(ChatAgent):
         if self.thread is None or self.run is None:
             raise ValueError("Thread or Run is None")
         return self.runs.retrieve(thread_id=self.thread.id, run_id=self.run.id)
+
+    def _get_run_steps(self) -> List[RunStep]:
+        if self.thread is None or self.run is None:
+            raise ValueError("Thread or Run is None")
+        result = self.runs.steps.list(thread_id=self.thread.id, run_id=self.run.id)
+        if result is None:
+            return []
+        return result.data
+
+    def _get_code_logs(self) -> List[Tuple[str, str]]:
+        """
+        Get list of input, output strings from code logs
+        """
+        run_steps = self._get_run_steps()
+        # each step may have multiple tool-calls,
+        # each tool-call may have multiple outputs
+        tool_calls = [  # list of list of tool-calls
+            s.step_details.tool_calls
+            for s in run_steps
+            if s.step_details is not None and hasattr(s.step_details, "tool_calls")
+        ]
+        code_logs = []
+        for tcl in tool_calls:  # each tool-call-list
+            for tc in tcl:
+                if tc is None or tc.type != ToolType.CODE_INTERPRETER:
+                    continue
+                io = tc.code_interpreter  # type: ignore
+                input = io.input
+                # TODO for CodeInterpreterOutputImage, there is no "logs"
+                # revisit when we handle images.
+                outputs = "\n\n".join(
+                    o.logs
+                    for o in io.outputs
+                    if o.type == "logs" and hasattr(o, "logs")
+                )
+                code_logs.append((input, outputs))
+        # return the reversed list, since they are stored in reverse chron order
+        return code_logs[::-1]
+
+    def _get_code_logs_str(self) -> str:
+        """
+        Get string representation of code logs
+        """
+        code_logs = self._get_code_logs()
+        return "\n\n".join(
+            f"INPUT:\n{input}\n\nOUTPUT:\n{output}" for input, output in code_logs
+        )
 
     def _add_thread_message(self, msg: str, role: Role) -> None:
         """
@@ -452,8 +524,7 @@ class OpenAIAssistant(ChatAgent):
         super().set_system_message(msg)
         if self.assistant is None:
             raise ValueError("Assistant is None")
-        # TODO this is an inplace update: revisit this line if it causes problems
-        self.assistants.update(self.assistant.id, instructions=msg)
+        self.assistant = self.assistants.update(self.assistant.id, instructions=msg)
 
     def _start_run(self) -> None:
         """
@@ -602,11 +673,15 @@ class OpenAIAssistant(ChatAgent):
         """
         is_tool_output = False
         if message is not None:
-            llm_msg = ChatDocument.to_LLMMessage(message)  # type: ignore
-            if llm_msg.role == Role.FUNCTION:
+            llm_msg = ChatDocument.to_LLMMessage(message)
+            tool_id = llm_msg.tool_id
+            if tool_id in self.pending_tool_ids:
+                if isinstance(message, ChatDocument):
+                    message.pop_tool_ids()
                 is_tool_output = True
                 # submit tool/fn result to the thread/run
                 self._submit_tool_outputs(llm_msg)
+                self.pending_tool_ids.remove(tool_id)
             else:
                 # add message to the thread
                 self._add_thread_message(llm_msg.content, role=Role.USER)
@@ -638,27 +713,60 @@ class OpenAIAssistant(ChatAgent):
 
         # code from ChatAgent.llm_response_messages
         if response.function_call is not None:
+            self.pending_tool_ids += [response.tool_id]
             response_str = str(response.function_call)
         else:
             response_str = response.message
         cache_str = "[red](cached)[/red]" if cached else ""
         if not settings.quiet:
+            if self._get_code_logs_str():
+                print(
+                    f"[magenta]CODE-INTERPRETER LOGS:\n"
+                    "-------------------------------\n"
+                    f"{self._get_code_logs_str()}[/magenta]"
+                )
             print(f"{cache_str}[green]" + response_str + "[/green]")
-        return ChatDocument.from_LLMResponse(response, displayed=False)
+        cdoc = ChatDocument.from_LLMResponse(response, displayed=False)
+        # Note message.metadata.tool_ids may have been popped above
+        tool_ids = (
+            []
+            if (message is None or isinstance(message, str))
+            else message.metadata.tool_ids
+        )
+
+        if response.tool_id != "":
+            tool_ids.append(response.tool_id)
+        cdoc.metadata.tool_ids = tool_ids
+        return cdoc
 
     async def llm_response_async(
         self, message: Optional[str | ChatDocument] = None
     ) -> Optional[ChatDocument]:
         """
-        Async version of llm_response.
+        Override ChatAgent's method: this is the main LLM response method.
+        In the ChatAgent, this updates `self.message_history` and then calls
+        `self.llm_response_messages`, but since we are relying on the Assistant API
+        to maintain conversation state, this method is simpler: Simply start a run
+        on the message-thread, and wait for it to complete.
+
+        Args:
+            message (Optional[str | ChatDocument], optional): message to respond to
+                (if absent, the LLM response will be based on the
+                instructions in the system_message). Defaults to None.
+        Returns:
+            Optional[ChatDocument]: LLM response
         """
         is_tool_output = False
         if message is not None:
-            llm_msg = ChatDocument.to_LLMMessage(message)  # type: ignore
-            if llm_msg.role == Role.FUNCTION:
+            llm_msg = ChatDocument.to_LLMMessage(message)
+            tool_id = llm_msg.tool_id
+            if tool_id in self.pending_tool_ids:
+                if isinstance(message, ChatDocument):
+                    message.pop_tool_ids()
                 is_tool_output = True
                 # submit tool/fn result to the thread/run
                 self._submit_tool_outputs(llm_msg)
+                self.pending_tool_ids.remove(tool_id)
             else:
                 # add message to the thread
                 self._add_thread_message(llm_msg.content, role=Role.USER)
@@ -690,10 +798,28 @@ class OpenAIAssistant(ChatAgent):
 
         # code from ChatAgent.llm_response_messages
         if response.function_call is not None:
+            self.pending_tool_ids += [response.tool_id]
             response_str = str(response.function_call)
         else:
             response_str = response.message
         cache_str = "[red](cached)[/red]" if cached else ""
         if not settings.quiet:
+            if self._get_code_logs_str():
+                print(
+                    f"[magenta]CODE-INTERPRETER LOGS:\n"
+                    "-------------------------------\n"
+                    f"{self._get_code_logs_str()}[/magenta]"
+                )
             print(f"{cache_str}[green]" + response_str + "[/green]")
-        return ChatDocument.from_LLMResponse(response, displayed=False)
+        cdoc = ChatDocument.from_LLMResponse(response, displayed=False)
+        # Note message.metadata.tool_ids may have been popped above
+        tool_ids = (
+            []
+            if (message is None or isinstance(message, str))
+            else message.metadata.tool_ids
+        )
+
+        if response.tool_id != "":
+            tool_ids.append(response.tool_id)
+        cdoc.metadata.tool_ids = tool_ids
+        return cdoc

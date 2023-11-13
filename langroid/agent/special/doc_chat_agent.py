@@ -879,6 +879,7 @@ class DocChatAgent(ChatAgent):
         instruction: str = "Give a concise summary of the following text:",
     ) -> None | ChatDocument:
         """Summarize all docs"""
+        print("LOG: Using langroid summarization routine!")
         if self.llm is None:
             raise ValueError("LLM not set")
         if self.original_docs is None:

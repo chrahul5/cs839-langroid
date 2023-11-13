@@ -1,0 +1,54 @@
+The text discusses a new network architecture, the Transformer, which is based solely on attention mechanisms and does away 
+with recurrence and convolutions. The Transformer model has been tested on two machine translation tasks and has shown superior quality while being more 
+parallelizable and requiring significantly less time to train. The model achieved a 28.4 BLEU on the WMT 2014 English-German translation task, improving the 
+existing best result by over 2 BLEU. On the WMT 2014 English-French translation task, the model established a new single-model state-of-the-art BLEU score of 
+41.8. The Transformer also generalizes well to other tasks, such as English constituency parsing. The work was performed at Google Brain and Google Research.The
+text discusses a model architecture called the Transformer, which relies entirely on an attention mechanism to draw global dependencies between input and 
+output. This approach allows for significantly more parallelization and can reach a new state of the art in translation quality after being trained for as 
+little as twelve hours on eight p100 GPUs. The Transformer model uses stacked self-attention and point-wise fully connected layers for both the encoder and 
+decoder. It also employs a residual connection around each of the two sub-layers, followed by layer normalization. The Transformer is the first transduction 
+model to rely entirely on self-attention to compute representations of its input and output without using sequence-aligned RNNs or convolution.The text 
+discusses a feed-forward network model with two sub-layers and a residual connection. The model also includes a decoder composed of six identical layers and a 
+third sub-layer for multi-head attention over the encoder stack output. The model uses an attention function that maps a query and a set of key-value pairs to 
+an output. The output is computed as a weighted sum of the values, with the weight assigned to each value computed by a compatibility function of the query with
+the corresponding key. The model uses scaled dot product attention and multi-head attention. The model also uses linear projections of the queries, keys, and 
+values to perform the attention function in parallel. The model allows for joint attention to information from different representation subspaces at different 
+positions.The text discusses a model that uses multi-head attention in three different ways: encoder-decoder attention layer, self-attention layers in the 
+encoder, and self-attention layers in the decoder. The model also contains a fully connected feed-forward network applied to each position separately and 
+identically. It uses learned embeddings to convert input and output tokens to vectors of dimension d and a learned linear transformation and softmax function to
+convert the decoder output to predicted next token probabilities. The model shares the same weight matrix between the two embedding layers and the pre-softmax 
+linear transformation. The model's complexity and maximum path lengths are also discussed.The text discusses the use of positional encodings in a model that 
+lacks recurrence and convolution. The model uses sine and cosine functions of different frequencies for positional encodings, which are added to the input 
+embeddings at the bottom of the encoder and decoder stacks. The authors hypothesize that this method allows the model to easily learn to attend by relative 
+positions. They also experimented with learned positional embeddings and found similar results. The text also compares self-attention layers with recurrent and 
+convolutional layers, noting that self-attention layers are faster when the sequence length is smaller than the representation dimensionality. For tasks 
+involving very long sequences, self-attention could be restricted to considering only a neighborhood of size r in the input sequence. The authors plan to 
+investigate this approach further.The text discusses a model that uses a single convolutional layer with a kernel width 'k'. The complexity of this model can be
+decreased by using a factor 'k' separable convolution. The model also uses self-attention, which could make it more interpretable. The model was trained on the 
+WMT 2014 English-German dataset and the WMT 2014 English-French dataset. The training was done on a machine with 8 Nvidia P100 GPUs, and the Adam optimizer was 
+used. Three types of regularization were used during training. The model achieved better BLEU scores than previous models on the English-German and 
+English-French newstest 2014 tests at a fraction of the training cost.The text discusses the performance of different machine translation models, with a focus 
+on the Transformer model. The 'Transformer Big' model outperformed all previously reported models on the WMT2014 English-German translation task, achieving a 
+new state-of-the-art BLEU score of 28.4. It also surpassed all previous models on the WMT2014 English-French translation task with a BLEU score of 41.0. The 
+training of these models took 3.5 days on 8 P100 GPUs. The base model also surpassed all previously published models and ensembles at a fraction of the training
+cost. The text also discusses the use of dropout and label smoothing during training, and the use of different hyperparameters.The text discusses the results of
+a study on the Transformer model's performance in various tasks. The study found that the number of attention heads and the attention key and value dimensions 
+affected the model's performance. Reducing the attention key size negatively impacted the model's quality. The study also found that larger models performed 
+better and that dropout was helpful in avoiding overfitting. The researchers replaced sinusoidal positional encoding with learned positional embeddings and 
+observed nearly identical results. The Transformer model was also tested on English constituency parsing and performed well. The model was trained on the Wall 
+Street Journal portion of the Penn Treebank and also in a semi-supervised setting using larger corpora. The Transformer model's performance was comparable to 
+other models in the field.The text discusses a model called the Transformer, which is a sequence transduction model based entirely on attention, replacing 
+recurrent layers typically used in encoder-decoder architectures. The Transformer was trained faster and performed better than architectures based on recurrent 
+convolutional layers in translation tasks. The authors plan to extend the Transformer to handle different input and output modalities and to investigate local 
+restricted attention mechanisms for handling large inputs and outputs. The code used to train and evaluate the model is available on GitHub.The text appears to 
+be a list of references from a scientific paper or article. It includes works on topics such as sequence modeling, recurrent neural networks, deep residual 
+learning, language modeling, neural machine translation, and attention-based neural machine translation. The authors of these works include notable figures in 
+the field of machine learning and artificial intelligence, such as Yoshua Bengio, Jürgen Schmidhuber, and Ilya Sutskever.The text appears to be a list of 
+references from various sources, including academic papers, conference proceedings, and preprints from arXiv. The topics covered include computational 
+linguistics, natural language processing, neural networks, machine learning, and machine translation. Some notable authors mentioned are Mitchell P. Marcus, 
+David McClosky, Eugene Charniak, Mark Johnson, and Geoffrey Hinton among others.The text discusses the use of attention mechanisms in neural machine translation
+and constituent parsing. It describes how attention heads can attend to distant dependencies of verbs, making phrase completion more difficult. It also mentions
+the involvement of attention heads in anaphora resolution. The text further explains that attention heads exhibit behaviors related to the structure of the 
+sentence, with different heads performing different tasks.The text appears to be a repetition of words in reverse order. The correct order would be "pad soe 
+opinion my in missing are we what is this just be should application its but perfect be never will law law law law." The summary would be: "In my opinion, we 
+are missing what this should be, just an application of its law, but it will never be perfect."
