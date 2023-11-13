@@ -5,6 +5,10 @@ cd cs839-langroid
 python3 -m venv .venv
 . ./.venv/bin/activate
 
+# Update .env file.
+For summarization task, copy .env-template as .env and just update openAI key. Then comment rest keys.
+OPENAI_API_KEY=<>
+
 <!-- Install the module in an editable way -->
 # Run below command from cs839-langroid/
 pip3 install -e .
