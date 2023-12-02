@@ -115,6 +115,7 @@ class DocChatAgentConfig(ChatAgentConfig):
         RelevanceExtractorAgentConfig()
     )
     doc_paths: List[str] = []
+    summary_paths: List[str] = []
     default_paths: List[str] = [
         "https://news.ycombinator.com/item?id=35629033",
         "https://www.newyorker.com/tech/annals-of-technology/chatgpt-is-a-blurry-jpeg-of-the-web",

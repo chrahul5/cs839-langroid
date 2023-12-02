@@ -1,6 +1,5 @@
 """
-Example of a Langroid DocChatAgent summarization.
-This can't handle long text documents.
+Implementation for our refine-summary routine.
 """
 import typer
 from rich import print
@@ -11,21 +10,10 @@ from langroid.parsing.parser import ParsingConfig, PdfParsingConfig, Splitter
 
 app = typer.Typer()
 
-lr.utils.logging.setup_colored_logging()
-
-def chat() -> None:
-    print(
-        """
-        [blue]Welcome to the retrieval-augmented chatbot!
-        Enter x or q to quit
-        """
-    )
-
-
-    # Initialize the doc agent.
+def summary(input_file) -> None:
     config = DocChatAgentConfig(
         n_query_rephrases=0,
-        doc_paths=['examples/summarization/paul_graham.txt'],
+        doc_paths=[input_file],
         cross_encoder_reranking_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
         hypothetical_answer=False,
         parsing=ParsingConfig(  # modify as needed
@@ -50,13 +38,64 @@ def chat() -> None:
             replace_collection=True,
         ),
     )
+
     agent = lr.agent.special.SummarizationAgent(config)
 
     # Ingest default documents.
     agent.ingest()
-    summary = agent.tree_summarize_docs()
+    summary = agent.summarize_chunked_docs()
     print(f"summary of the doc: {summary.content}")
 
+def refine(current_summary, source_file, queries) -> None:
+    print(
+        """
+        [blue]Welcome to the retrieval-augmented chatbot!
+        Enter x or q to quit
+        """
+    )
+
+    #need to make changes to this config for relevant chunks retrieval purpose
+    config = DocChatAgentConfig(
+        n_query_rephrases=0,
+        doc_paths=[source_file],
+        cross_encoder_reranking_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        hypothetical_answer=False,
+        parsing=ParsingConfig(  # modify as needed
+            splitter=Splitter.TOKENS,
+            chunk_size=1000,  # aim for this many tokens per chunk
+            overlap=100,  # overlap between chunks
+            max_chunks=10_000,
+            min_chunk_chars=200,
+            discard_chunk_chars=5,  # discard chunks with fewer than this many chars
+            n_similar_docs=3,
+            pdf=PdfParsingConfig(
+                library="pdfplumber",
+            ),
+        ),
+        vecdb=lr.vector_store.QdrantDBConfig(
+            collection_name="quick-start-chat-agent-docs",
+            replace_collection=True,
+        ),
+    )
+    chunk_dump = {}
+    file_path = "chunk_dump.txt"
+
+    # Retrieve relevant chunks for the given queries.
+    doc_chat_agent = lr.agent.special.DocChatAgent(config)
+    doc_chat_agent.ingest()
+    for q in queries :
+        query_chunks = doc_chat_agent.get_relevant_chunks(query=q)
+        print(f"retrieved {len(query_chunks)} chunks")
+        chunk_dump[q] = []
+        chunk_dump[q].append(query_chunks[0].content)
+        # for qc in query_chunks : 
+        #     chunk_dump[q].append(qc.content)
+
+    chunk_str = str(chunk_dump)
+    with open(file_path, "w") as file:
+        file.write(chunk_str)
+    
+    summary("chunk_dump.txt")
 
 @app.command()
 def main(
@@ -67,11 +106,12 @@ def main(
     lr.utils.configuration.set_global(
         lr.utils.configuration.Settings(
             debug=debug,
-            cache=not nocache,
+            cache=nocache,
             stream=not no_stream,
         )
     )
-    chat()
+    queries = ["Who are Idelle and Julian Weber?"]
+    refine("examples/summarization/a_summary.txt", "examples/summarization/a.txt", queries=queries)
 
 
 if __name__ == "__main__":

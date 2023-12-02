@@ -1,6 +1,5 @@
 """
-Example of a Langroid DocChatAgent summarization.
-This can't handle long text documents.
+Simple implementation of RAG-based summarization.
 """
 import typer
 from rich import print
@@ -86,13 +85,16 @@ def chat(input_file, queries) -> None:
     chunk_dump = {}
     file_path = "chunk_dump.txt"
 
+    # Retrieve relevant chunks for the given queries.
     doc_chat_agent = lr.agent.special.DocChatAgent(config)
     doc_chat_agent.ingest()
     for q in queries :
         query_chunks = doc_chat_agent.get_relevant_chunks(query=q)
+        print(f"retrieved {len(query_chunks)} chunks")
         chunk_dump[q] = []
-        for qc in query_chunks : 
-            chunk_dump[q].append(qc.content)
+        chunk_dump[q].append(query_chunks[0].content)
+        # for qc in query_chunks : 
+        #     chunk_dump[q].append(qc.content)
 
     chunk_str = str(chunk_dump)
     with open(file_path, "w") as file:
@@ -113,8 +115,8 @@ def main(
             stream=not no_stream,
         )
     )
-    queries = ["What is a transformer?", "What training data was used?", "What is multihead attention?"]
-    chat("attention.pdf", queries=queries)
+    queries = ["Who are Idelle and Julian Weber?"]
+    chat("examples/summarization/paul_graham.txt", queries=queries)
 
 
 if __name__ == "__main__":

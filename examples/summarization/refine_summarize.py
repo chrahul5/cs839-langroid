@@ -1,6 +1,5 @@
 """
-Example of a Langroid DocChatAgent summarization.
-This can't handle long text documents.
+Example of a Langroid DocChatAgent summarization using query-refine approach.
 """
 import typer
 from rich import print
@@ -26,6 +25,7 @@ def chat() -> None:
     config = DocChatAgentConfig(
         n_query_rephrases=0,
         doc_paths=['examples/summarization/paul_graham.txt'],
+        summary_paths=['examples/summarization/paul_graham_summary.txt'],
         cross_encoder_reranking_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
         hypothetical_answer=False,
         parsing=ParsingConfig(  # modify as needed
@@ -54,8 +54,9 @@ def chat() -> None:
 
     # Ingest default documents.
     agent.ingest()
-    summary = agent.tree_summarize_docs()
-    print(f"summary of the doc: {summary.content}")
+    # summary = agent.tree_summarize_docs()
+    refine_summary = agent.refine_summary(["what about colour classes the author took at RISD,?", "Who are Idelle and Julian Weber?"])
+    print(f"summary of the doc: {refine_summary.content}")
 
 
 @app.command()

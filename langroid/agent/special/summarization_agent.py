@@ -25,6 +25,7 @@ class SummarizationAgent(DocChatAgent):
         self.chunked_docs: None | List[Document] = None
         self.chunked_docs_clean: None | List[Document] = None
         self.response: None | Document = None
+        self.tree_summarize_content = None
         if len(config.doc_paths) > 0:
             self.ingest()
 
@@ -70,6 +71,53 @@ class SummarizationAgent(DocChatAgent):
 
         return ChatDocument(
                 content=summary,
+                metadata=ChatDocMetaData(
+                    source=Entity.SYSTEM,
+                    sender=Entity.LLM,
+                ),
+            )
+
+    def tree_summarize_docs(
+        self,
+        instruction: str = "Give a concise summary of the following text:",
+    ) -> None | ChatDocument:
+        while len(self.chunked_docs_clean) != 1:
+            print(f"summarizing {len(self.chunked_docs_clean)} num chunks")
+            doc = self.summarize_chunked_docs()
+            self.ingest_docs([doc])
+        doc = self.summarize_chunked_docs()
+        self.tree_summarize_content = doc.content
+        return ChatDocument(
+                content=doc.content,
+                metadata=ChatDocMetaData(
+                    source=Entity.SYSTEM,
+                    sender=Entity.LLM,
+                ),
+            )
+
+    def refine_summary(self, queries):
+        # Ingest summary first.
+        with open(self.config.summary_paths[0], 'r') as file:
+            self.tree_summarize_content = file.read()
+        print(f"I have read summary content {self.tree_summarize_content}")
+
+        chunks = {}
+        for q in queries:
+            print(f"\n\n\nRefine query: {q}")
+            query_chunks = self.get_relevant_chunks(query=q)
+            if q not in chunks:
+                chunks[q] = []
+            # For now consider only the first query chunk.
+            chunks[q].append(query_chunks[0].content)
+
+        # Refine summary with query chunks.
+        REFINE_PROMPT = f'I want you to combine summary text with new points to give one single comprehensive text.\\\
+         Summary: {self.tree_summarize_content} New Points: {chunks}'
+        with StreamingIfAllowed(self.llm):
+            new_summary = Agent.llm_response(self, REFINE_PROMPT)
+        self.tree_summarize_content = new_summary.content
+        return ChatDocument(
+                content=new_summary.content,
                 metadata=ChatDocMetaData(
                     source=Entity.SYSTEM,
                     sender=Entity.LLM,

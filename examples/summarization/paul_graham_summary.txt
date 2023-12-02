@@ -1,0 +1,9 @@
+The author's journey began with programming and a fascination with artificial intelligence in high school, leading to studying AI and Lisp language at Cornell University and Harvard. 
+The author later shifted focus to art, studying at Rhode Island School of Design and Accademia di Belle Arti in Florence.
+Financial constraints led the author back to programming at a company called Interleaf. Dissatisfied with conventional work, the author created an online art gallery, which evolved into an online store and then Viaweb, a software company that developed a web app for building online stores.
+Despite initial success, competition made the work stressful. After Viaweb was bought by Yahoo, the author transitioned back to the tech industry, starting a new company, Aspra, and later focusing on open-source projects, leading to the creation of a new Lisp language dialect called Arc. 
+The author also explored online publishing and angel investing, co-founding an angel investment firm with Jessica Livingston. 
+The firm, Y Combinator, adopted a batch model of funding multiple startups twice a year. Despite challenges, the author found the work rewarding. When the author's mother's health declined, they handed Y Combinator to Sam Altman and returned to painting. 
+The author emphasizes the importance of choosing the best project to work on, as attention is a zero-sum game. The author also began writing essays, working on Lisp as a core language, and developing a new Lisp programming language called Bel. 
+The author moved to England in the summer of 2016 and despite challenges, found the work satisfying. The text covers a range of topics including the author's writing process, living in Italy, the evolution of computer technology, startup culture, and online publishing. 
+The author reflects on the transition of YC fund around 2009, the challenges of running a forum, and ends with a philosophical discussion on the concept of invention and discovery.
